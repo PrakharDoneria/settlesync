@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase, type Room, type Profile } from '@/lib/supabase';
-import { ArrowLeftIcon, DocumentDuplicateIcon, CheckIcon, ChatBubbleLeftRightIcon, ReceiptRefundIcon, ChartBarIcon, WalletIcon, UserGroupIcon } from '@heroicons/react/24/solid';
+import { ArrowLeftIcon, DocumentDuplicateIcon, CheckIcon, ChatBubbleLeftRightIcon, ReceiptRefundIcon, ChartBarIcon, WalletIcon, UserGroupIcon, LinkIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RoomChat } from '@/components/RoomChat';
 import { Analytics } from '@/components/Analytics';
 import { SettlementQR } from '@/components/SettlementQR';
 import { BottomNav } from '@/components/BottomNav';
+import { useAppStore } from '@/lib/store';
 
 interface RoomPageProps {
   params: {
@@ -24,6 +25,7 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const router = useRouter();
 
@@ -56,6 +58,10 @@ export default function RoomPage({ params }: RoomPageProps) {
           .single();
 
         setRoom(roomData);
+        if (roomData) {
+          useAppStore.getState().setSelectedRoomId(roomData.id);
+          useAppStore.getState().setCurrentRoom(roomData);
+        }
 
         // Get members
         const { data: membersData } = await supabase
@@ -99,6 +105,22 @@ export default function RoomPage({ params }: RoomPageProps) {
       navigator.clipboard.writeText(room.invite_code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const getInviteUrl = () => {
+    if (typeof window !== 'undefined' && room?.invite_code) {
+      return `${window.location.origin}/rooms/join?code=${room.invite_code}`;
+    }
+    return room?.invite_code ? `/rooms/join?code=${room.invite_code}` : '';
+  };
+
+  const handleCopyLink = () => {
+    const url = getInviteUrl();
+    if (url) {
+      navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
     }
   };
 
@@ -221,23 +243,59 @@ export default function RoomPage({ params }: RoomPageProps) {
               </div>
             )}
 
-            <div className="neo-card-lg bg-neo-magenta border-3 sm:border-4 border-neo-black p-4 sm:p-6">
-              <p className="text-xs sm:text-neo-xs font-neo-bold text-neo-white mb-3 uppercase opacity-90">Invite Code</p>
-              <div className="flex items-center gap-3">
-                <p className="text-2xl sm:text-4xl font-neo-black text-neo-white font-mono tracking-widest">{room.invite_code}</p>
-                <button
-                  onClick={handleCopyCode}
-                  className="neo-icon-btn w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-                  aria-label="Copy Invite Code"
-                >
-                  {copied ? (
-                    <CheckIcon className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
-                  ) : (
-                    <DocumentDuplicateIcon className="w-5 h-5 sm:w-6 sm:h-6 text-neo-black" />
-                  )}
-                </button>
+            <div className="neo-card-lg bg-neo-magenta border-3 sm:border-4 border-neo-black p-4 sm:p-6 text-neo-white">
+              <p className="text-xs sm:text-neo-xs font-neo-bold uppercase opacity-90 mb-3">Trip Invitations</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 6-Digit Code */}
+                <div className="bg-neo-white border-2 sm:border-3 border-neo-black p-3 sm:p-4 rounded-neo text-neo-black">
+                  <p className="text-xs font-neo-bold uppercase opacity-70 mb-1">Invite Code</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-2xl sm:text-3xl font-neo-black font-mono tracking-widest">{room.invite_code}</p>
+                    <button
+                      onClick={handleCopyCode}
+                      className="neo-icon-btn w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0"
+                      aria-label="Copy Invite Code"
+                      title="Copy Code"
+                    >
+                      {copied ? (
+                        <CheckIcon className="w-5 h-5 text-emerald-600" />
+                      ) : (
+                        <DocumentDuplicateIcon className="w-5 h-5 text-neo-black" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs font-neo-bold opacity-60 mt-2">Enter code manually on Join Trip page</p>
+                </div>
+
+                {/* Auto-Join Link */}
+                <div className="bg-neo-white border-2 sm:border-3 border-neo-black p-3 sm:p-4 rounded-neo text-neo-black">
+                  <p className="text-xs font-neo-bold uppercase opacity-70 mb-1">Direct Auto-Join Link</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs sm:text-sm font-neo-bold truncate font-mono opacity-80 select-all">
+                      {getInviteUrl()}
+                    </p>
+                    <button
+                      onClick={handleCopyLink}
+                      className="neo-button-primary border-2 px-3 py-2 text-xs font-neo-black uppercase flex items-center gap-1.5 flex-shrink-0"
+                      title="Copy Auto-Join Link"
+                    >
+                      {copiedLink ? (
+                        <>
+                          <CheckIcon className="w-4 h-4 text-emerald-800" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <LinkIcon className="w-4 h-4" />
+                          <span>Copy Link</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs font-neo-bold opacity-60 mt-2">Friends clicking this link will join automatically!</p>
+                </div>
               </div>
-              <p className="text-xs font-neo-bold text-neo-white mt-3 opacity-80">Share with friends to invite them</p>
             </div>
           </div>
         )}

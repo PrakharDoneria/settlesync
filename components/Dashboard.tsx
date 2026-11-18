@@ -188,6 +188,10 @@ export const Dashboard: React.FC = () => {
               <Link
                 key={room.id}
                 href={`/rooms/${room.id}`}
+                onClick={() => {
+                  useAppStore.getState().setSelectedRoomId(room.id);
+                  useAppStore.getState().setCurrentRoom(room);
+                }}
                 className={`neo-card-lg p-3 sm:p-5 border-3 sm:border-4 block hover:shadow-neo-xl transition-all ${
                   idx % 3 === 0
                     ? 'bg-neo-cyan'

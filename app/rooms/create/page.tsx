@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAppStore } from '@/lib/store';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { BottomNav } from '@/components/BottomNav';
 import Link from 'next/link';
@@ -65,6 +66,10 @@ export default function CreateRoomPage() {
       if (memberError) {
         console.warn('Member addition warning:', memberError);
       }
+
+      // Update global selected room store
+      useAppStore.getState().setSelectedRoomId(room.id);
+      useAppStore.getState().setCurrentRoom(room);
 
       router.push(`/rooms/${room.id}`);
     } catch (err) {

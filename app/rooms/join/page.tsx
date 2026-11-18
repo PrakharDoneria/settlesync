@@ -1,81 +1,145 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAppStore } from '@/lib/store';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { BottomNav } from '@/components/BottomNav';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function JoinRoomPage() {
+function JoinRoomContent() {
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [autoJoining, setAutoJoining] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth');
+  const processJoin = useCallback(async (codeToJoin: string) => {
+    const code = codeToJoin.toUpperCase().trim();
+    if (!code) throw new Error('Please enter an invite code');
+
+    // Find room by invite code (using maybeSingle to handle empty or invalid results gracefully)
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('invite_code', code)
+      .maybeSingle();
+
+    if (roomError) {
+      console.error('Error finding room:', roomError);
+      throw new Error('Failed to find trip with this invite code');
+    }
+
+    if (!room) {
+      throw new Error('Invalid invite code. Please check with your trip organizer.');
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      // If user isn't authenticated, save intended code and redirect to auth
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('settlesync_pending_invite_code', code);
       }
-    };
-    checkUser();
+      router.push(`/auth?redirect=/rooms/join?code=${code}`);
+      return;
+    }
+
+    // Check if already a member or creator
+    if (room.created_by === user.id) {
+      useAppStore.getState().setSelectedRoomId(room.id);
+      useAppStore.getState().setCurrentRoom(room);
+      router.push(`/rooms/${room.id}`);
+      return;
+    }
+
+    const { data: existingMember } = await supabase
+      .from('room_members')
+      .select('*')
+      .eq('room_id', room.id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (existingMember) {
+      useAppStore.getState().setSelectedRoomId(room.id);
+      useAppStore.getState().setCurrentRoom(room);
+      router.push(`/rooms/${room.id}`);
+      return;
+    }
+
+    // Add as member
+    const { error: joinError } = await supabase
+      .from('room_members')
+      .insert({
+        room_id: room.id,
+        user_id: user.id,
+      });
+
+    if (joinError) throw joinError;
+
+    // Update global selected room store
+    useAppStore.getState().setSelectedRoomId(room.id);
+    useAppStore.getState().setCurrentRoom(room);
+
+    router.push(`/rooms/${room.id}`);
   }, [router]);
 
-  const handleJoinRoom = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const initAndCheckAutoJoin = async () => {
+      const codeParam = searchParams.get('code') || 
+        (typeof window !== 'undefined' ? localStorage.getItem('settlesync_pending_invite_code') : null);
+
+      if (codeParam) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('settlesync_pending_invite_code');
+        }
+        const cleaned = codeParam.toUpperCase().trim();
+        setInviteCode(cleaned);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          router.push(`/auth?redirect=/rooms/join?code=${cleaned}`);
+          return;
+        }
+
+        setAutoJoining(true);
+        setLoading(true);
+        try {
+          await processJoin(cleaned);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to join trip');
+          setAutoJoining(false);
+          setLoading(false);
+        }
+      } else {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          router.push('/auth');
+        }
+      }
+    };
+
+    initAndCheckAutoJoin();
+  }, [searchParams, router, processJoin]);
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const code = inviteCode.toUpperCase().trim();
-
-      if (!code) throw new Error('Please enter an invite code');
-
-      // Find room by invite code
-      const { data: room, error: roomError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('invite_code', code)
-        .single();
-
-      if (roomError || !room) throw new Error('Invalid invite code');
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error('Not authenticated');
-
-      // Check if already a member
-      const { data: existingMember } = await supabase
-        .from('room_members')
-        .select('*')
-        .eq('room_id', room.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existingMember) {
-        throw new Error('You are already a member of this trip');
-      }
-
-      // Add as member
-      const { error: joinError } = await supabase
-        .from('room_members')
-        .insert({
-          room_id: room.id,
-          user_id: user.id,
-        });
-
-      if (joinError) throw joinError;
-
-      router.push(`/rooms/${room.id}`);
+      await processJoin(inviteCode);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
       setLoading(false);
     }
   };
@@ -97,9 +161,19 @@ export default function JoinRoomPage() {
           </h1>
         </div>
 
+        {/* Auto-joining Banner */}
+        {autoJoining && (
+          <div className="neo-card-lg bg-neo-cyan border-3 sm:border-4 border-neo-black p-4 mb-6 text-center">
+            <div className="inline-block w-8 h-8 border-3 border-neo-black border-t-neo-magenta rounded-full animate-neo-spin mb-2"></div>
+            <p className="font-neo-black text-sm sm:text-base text-neo-black uppercase">
+              Joining trip via invite link...
+            </p>
+          </div>
+        )}
+
         {/* Form Card */}
         <div className="neo-card-lg bg-neo-white border-3 sm:border-4 border-neo-black p-4 sm:p-6">
-          <form onSubmit={handleJoinRoom} className="space-y-4 sm:space-y-5">
+          <form onSubmit={handleManualSubmit} className="space-y-4 sm:space-y-5">
             {error && (
               <div className="bg-neo-magenta border-2 sm:border-3 border-neo-black text-neo-white p-3 sm:p-4 rounded-neo text-xs sm:text-neo-sm font-neo-bold">
                 ⚠️ {error}
@@ -118,7 +192,7 @@ export default function JoinRoomPage() {
                 required
               />
               <p className="text-xs font-neo-bold text-neo-black opacity-60 mt-2">
-                Ask the trip organizer for the code
+                Ask the trip organizer for the code or an auto-join link
               </p>
             </div>
 
@@ -139,5 +213,22 @@ export default function JoinRoomPage() {
       </div>
       <BottomNav />
     </main>
+  );
+}
+
+export default function JoinRoomPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-neo-white">
+          <div className="text-center">
+            <div className="inline-block w-12 h-12 border-4 border-neo-black border-t-neo-cyan rounded-full animate-neo-spin"></div>
+            <p className="mt-4 text-neo-md font-neo-black text-neo-cyan">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <JoinRoomContent />
+    </Suspense>
   );
 }

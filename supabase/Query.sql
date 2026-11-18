@@ -140,6 +140,7 @@ DROP POLICY IF EXISTS "Users can view profiles of room members" ON public.profil
 DROP POLICY IF EXISTS "Profiles are readable by authenticated users" ON public.profiles;
 
 DROP POLICY IF EXISTS "Users can view rooms they created or joined" ON public.rooms;
+DROP POLICY IF EXISTS "Users can find room by invite code" ON public.rooms;
 DROP POLICY IF EXISTS "Users can insert rooms" ON public.rooms;
 DROP POLICY IF EXISTS "Users can update their rooms" ON public.rooms;
 
@@ -181,6 +182,11 @@ CREATE POLICY "Users can view rooms they created or joined" ON public.rooms
     created_by = auth.uid() OR
     id IN (SELECT public.get_user_room_ids(auth.uid()))
   );
+
+-- Allow authenticated users to look up a room by invite_code to join
+CREATE POLICY "Users can find room by invite code" ON public.rooms
+  FOR SELECT TO authenticated
+  USING (invite_code IS NOT NULL);
 
 CREATE POLICY "Users can insert rooms" ON public.rooms
   FOR INSERT TO authenticated

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import { ExpenseForm } from '@/components/ExpenseForm';
 import { supabase, type Expense, type Profile, type Room } from '@/lib/supabase';
+import { useAppStore } from '@/lib/store';
 import { ArrowLeftIcon, PlusIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,7 +12,8 @@ import { useRouter } from 'next/navigation';
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const { selectedRoomId: storedRoomId, setSelectedRoomId: setStoredRoomId } = useAppStore();
+  const [selectedRoomId, setSelectedRoomId] = useState(storedRoomId || '');
   const [members, setMembers] = useState<Profile[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -29,16 +31,33 @@ export default function ExpensesPage() {
           return;
         }
 
-        // Get user's rooms
-        const { data: roomsData } = await supabase
+        // Get user's room IDs (joined + created)
+        const { data: memberRows } = await supabase
           .from('room_members')
-          .select('room_id, rooms(*)')
+          .select('room_id')
           .eq('user_id', user.id);
 
-        if (roomsData && roomsData.length > 0) {
-          const roomsList = roomsData.map((r: any) => r.rooms as Room);
+        const memberRoomIds = (memberRows || []).map((r) => r.room_id);
+
+        let query = supabase.from('rooms').select('*');
+        if (memberRoomIds.length > 0) {
+          query = query.or(`created_by.eq.${user.id},id.in.(${memberRoomIds.join(',')})`);
+        } else {
+          query = query.eq('created_by', user.id);
+        }
+
+        const { data: roomsList } = await query.order('created_at', { ascending: false });
+
+        if (roomsList && roomsList.length > 0) {
           setRooms(roomsList);
-          setSelectedRoomId(roomsList[0].id);
+          
+          // If storedRoomId exists in user's rooms, use it, else default to first room
+          const activeRoomId = (storedRoomId && roomsList.some((r) => r.id === storedRoomId))
+            ? storedRoomId
+            : roomsList[0].id;
+
+          setSelectedRoomId(activeRoomId);
+          setStoredRoomId(activeRoomId);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -48,7 +67,16 @@ export default function ExpensesPage() {
     };
 
     fetchData();
-  }, [router]);
+  }, [router, storedRoomId, setStoredRoomId]);
+
+  const handleRoomSelect = (newRoomId: string) => {
+    setSelectedRoomId(newRoomId);
+    setStoredRoomId(newRoomId);
+    const chosenRoom = rooms.find((r) => r.id === newRoomId);
+    if (chosenRoom) {
+      useAppStore.getState().setCurrentRoom(chosenRoom);
+    }
+  };
 
   useEffect(() => {
     const fetchExpenses = async () => {
@@ -132,7 +160,7 @@ export default function ExpensesPage() {
               </label>
               <select
                 value={selectedRoomId}
-                onChange={(e) => setSelectedRoomId(e.target.value)}
+                onChange={(e) => handleRoomSelect(e.target.value)}
                 className="neo-input border-2 sm:border-3 w-full text-xs sm:text-neo-md px-3 sm:px-4 py-2 sm:py-3 bg-neo-white text-neo-black"
               >
                 {rooms.map((room) => (

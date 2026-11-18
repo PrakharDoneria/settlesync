@@ -4,13 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import { RoomChat } from '@/components/RoomChat';
 import { supabase, type Profile, type Room } from '@/lib/supabase';
+import { useAppStore } from '@/lib/store';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function ChatPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const { selectedRoomId: storedRoomId, setSelectedRoomId: setStoredRoomId } = useAppStore();
+  const [selectedRoomId, setSelectedRoomId] = useState(storedRoomId || '');
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -36,16 +38,32 @@ export default function ChatPage() {
 
         setCurrentUser(userData);
 
-        // Get user's rooms
-        const { data: roomsData } = await supabase
+        // Get user's rooms (joined + created)
+        const { data: memberRows } = await supabase
           .from('room_members')
-          .select('room_id, rooms(*)')
+          .select('room_id')
           .eq('user_id', authUser.id);
 
-        if (roomsData && roomsData.length > 0) {
-          const roomsList = roomsData.map((r: any) => r.rooms as Room);
+        const memberRoomIds = (memberRows || []).map((r) => r.room_id);
+
+        let query = supabase.from('rooms').select('*');
+        if (memberRoomIds.length > 0) {
+          query = query.or(`created_by.eq.${authUser.id},id.in.(${memberRoomIds.join(',')})`);
+        } else {
+          query = query.eq('created_by', authUser.id);
+        }
+
+        const { data: roomsList } = await query.order('created_at', { ascending: false });
+
+        if (roomsList && roomsList.length > 0) {
           setRooms(roomsList);
-          setSelectedRoomId(roomsList[0].id);
+          
+          const activeRoomId = (storedRoomId && roomsList.some((r) => r.id === storedRoomId))
+            ? storedRoomId
+            : roomsList[0].id;
+
+          setSelectedRoomId(activeRoomId);
+          setStoredRoomId(activeRoomId);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -55,7 +73,16 @@ export default function ChatPage() {
     };
 
     fetchData();
-  }, [router]);
+  }, [router, storedRoomId, setStoredRoomId]);
+
+  const handleRoomSelect = (newRoomId: string) => {
+    setSelectedRoomId(newRoomId);
+    setStoredRoomId(newRoomId);
+    const chosenRoom = rooms.find((r) => r.id === newRoomId);
+    if (chosenRoom) {
+      useAppStore.getState().setCurrentRoom(chosenRoom);
+    }
+  };
 
   if (loading || !currentUser) {
     return (
@@ -91,7 +118,7 @@ export default function ChatPage() {
             </label>
             <select
               value={selectedRoomId}
-              onChange={(e) => setSelectedRoomId(e.target.value)}
+              onChange={(e) => handleRoomSelect(e.target.value)}
               className="neo-input border-2 sm:border-3 w-full text-xs sm:text-neo-md px-3 sm:px-4 py-2 sm:py-3 bg-neo-white text-neo-black"
             >
               {rooms.map((room) => (

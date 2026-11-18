@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase, type Room } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { BottomNav } from '@/components/BottomNav';
+import { useAppStore } from '@/lib/store';
 
 export default function MyTripsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -126,6 +127,10 @@ export default function MyTripsPage() {
               <Link
                 key={room.id}
                 href={`/rooms/${room.id}`}
+                onClick={() => {
+                  useAppStore.getState().setSelectedRoomId(room.id);
+                  useAppStore.getState().setCurrentRoom(room);
+                }}
                 className={`neo-card-lg p-4 sm:p-6 border-3 sm:border-4 border-neo-black hover:shadow-neo-xl transition-all group ${
                   idx % 3 === 0
                     ? 'bg-neo-cyan'

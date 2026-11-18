@@ -4,13 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import { SettlementQR } from '@/components/SettlementQR';
 import { supabase, type Balance, type Room } from '@/lib/supabase';
+import { useAppStore } from '@/lib/store';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function SettlePage() {
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const { selectedRoomId: storedRoomId, setSelectedRoomId: setStoredRoomId } = useAppStore();
+  const [selectedRoomId, setSelectedRoomId] = useState(storedRoomId || '');
   const [selectedRoomName, setSelectedRoomName] = useState('');
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,17 +30,33 @@ export default function SettlePage() {
           return;
         }
 
-        // Get user's rooms
-        const { data: roomsData } = await supabase
+        // Get user's room IDs (joined + created)
+        const { data: memberRows } = await supabase
           .from('room_members')
-          .select('room_id, rooms(*)')
+          .select('room_id')
           .eq('user_id', user.id);
 
-        if (roomsData && roomsData.length > 0) {
-          const roomsList = roomsData.map((r: any) => r.rooms as Room);
+        const memberRoomIds = (memberRows || []).map((r) => r.room_id);
+
+        let query = supabase.from('rooms').select('*');
+        if (memberRoomIds.length > 0) {
+          query = query.or(`created_by.eq.${user.id},id.in.(${memberRoomIds.join(',')})`);
+        } else {
+          query = query.eq('created_by', user.id);
+        }
+
+        const { data: roomsList } = await query.order('created_at', { ascending: false });
+
+        if (roomsList && roomsList.length > 0) {
           setRooms(roomsList);
-          setSelectedRoomId(roomsList[0].id);
-          setSelectedRoomName(roomsList[0].name);
+          
+          const activeRoom = (storedRoomId && roomsList.find((r) => r.id === storedRoomId))
+            ? roomsList.find((r) => r.id === storedRoomId)!
+            : roomsList[0];
+
+          setSelectedRoomId(activeRoom.id);
+          setSelectedRoomName(activeRoom.name);
+          setStoredRoomId(activeRoom.id);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -48,7 +66,7 @@ export default function SettlePage() {
     };
 
     fetchData();
-  }, [router]);
+  }, [router, storedRoomId, setStoredRoomId]);
 
   useEffect(() => {
     const fetchBalances = async () => {
@@ -73,6 +91,10 @@ export default function SettlePage() {
     const room = rooms.find((r) => r.id === roomId);
     setSelectedRoomId(roomId);
     setSelectedRoomName(room?.name || '');
+    setStoredRoomId(roomId);
+    if (room) {
+      useAppStore.getState().setCurrentRoom(room);
+    }
   };
 
   if (loading) {

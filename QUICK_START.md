@@ -23,11 +23,9 @@ If not installed, download from https://nodejs.org/
 ## 3. Setup Database (2 min)
 
 1. In Supabase Dashboard, go to **SQL Editor**
-2. Create a new query and paste `supabase/01_schema.sql`
+2. Create a new query and paste `supabase/Query.sql`
 3. Click **Run**
-4. Repeat for `supabase/02_rls_policies.sql`
-5. Repeat for `supabase/03_functions.sql`
-6. Go to **Database** → **Tables** → **room_messages** → Enable Realtime
+4. Go to **Database** → **Tables** → **room_messages** → Enable Realtime
 
 ## 4. Setup Environment (1 min)
 
