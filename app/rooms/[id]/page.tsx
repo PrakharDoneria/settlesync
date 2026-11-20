@@ -2,7 +2,20 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase, type Room, type Profile } from '@/lib/supabase';
-import { ArrowLeftIcon, DocumentDuplicateIcon, CheckIcon, ChatBubbleLeftRightIcon, ReceiptRefundIcon, ChartBarIcon, WalletIcon, UserGroupIcon, LinkIcon } from '@heroicons/react/24/solid';
+import {
+  ArrowLeftIcon,
+  DocumentDuplicateIcon,
+  CheckIcon,
+  ChatBubbleLeftRightIcon,
+  ReceiptRefundIcon,
+  ChartBarIcon,
+  WalletIcon,
+  UserGroupIcon,
+  LinkIcon,
+  TrashIcon,
+  ArrowRightOnRectangleIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RoomChat } from '@/components/RoomChat';
@@ -27,6 +40,13 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+
+  // Danger actions states
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -124,6 +144,69 @@ export default function RoomPage({ params }: RoomPageProps) {
     }
   };
 
+  // Leave Trip
+  const handleLeaveTrip = async () => {
+    if (!currentUser || !room) return;
+    setActionError('');
+    setActionLoading(true);
+
+    try {
+      const { error: leaveErr } = await supabase
+        .from('room_members')
+        .delete()
+        .eq('room_id', room.id)
+        .eq('user_id', currentUser.id);
+
+      if (leaveErr) throw leaveErr;
+
+      // Clear selection if this room was stored
+      if (useAppStore.getState().selectedRoomId === room.id) {
+        useAppStore.getState().setSelectedRoomId(null);
+        useAppStore.getState().setCurrentRoom(null);
+      }
+
+      router.push('/trips');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to leave trip');
+      setActionLoading(false);
+    }
+  };
+
+  // Delete Trip (creator only)
+  const handleDeleteTrip = async () => {
+    if (!currentUser || !room) return;
+    if (room.created_by !== currentUser.id) {
+      setActionError('Only the trip organizer can delete this trip');
+      return;
+    }
+
+    setActionError('');
+    setActionLoading(true);
+
+    try {
+      const { error: deleteErr } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', room.id)
+        .eq('created_by', currentUser.id);
+
+      if (deleteErr) throw deleteErr;
+
+      // Clear selection if this room was stored
+      if (useAppStore.getState().selectedRoomId === room.id) {
+        useAppStore.getState().setSelectedRoomId(null);
+        useAppStore.getState().setCurrentRoom(null);
+      }
+
+      router.push('/trips');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete trip');
+      setActionLoading(false);
+    }
+  };
+
+  const isCreator = currentUser && room && room.created_by === currentUser.id;
+
   const tabs: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
     { id: 'overview', label: 'Overview', icon: UserGroupIcon },
     { id: 'expenses', label: 'Expenses', icon: ReceiptRefundIcon },
@@ -158,40 +241,59 @@ export default function RoomPage({ params }: RoomPageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-neo-white pb-24 px-0 sm:px-0 py-0">
+    <main className="min-h-screen bg-neo-white pb-32 px-0 sm:px-0 py-0">
       {/* Header */}
-      <div className="bg-neo-lime border-b-3 sm:border-b-4 border-neo-black px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 sticky top-0 z-30">
+      <div className="bg-neo-lime border-b-3 sm:border-b-4 border-neo-black px-3 sm:px-6 py-4 sm:py-6">
         <div className="max-w-6xl mx-auto">
-          <div className="flex items-center gap-3 mb-4">
-            <Link
-              href="/trips"
-              className="neo-icon-btn w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-              aria-label="Back to Trips"
-            >
-              <ArrowLeftIcon className="w-5 h-5 sm:w-6 sm:h-6 text-neo-black" />
-            </Link>
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-neo-black text-neo-black break-words flex-1">
-              {room.name.toUpperCase()}
-            </h1>
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <Link
+                href="/trips"
+                className="neo-icon-btn w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
+                aria-label="Back to Trips"
+              >
+                <ArrowLeftIcon className="w-5 h-5 sm:w-6 sm:h-6 text-neo-black" />
+              </Link>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-3xl md:text-4xl font-neo-black text-neo-black truncate">
+                  {room.name.toUpperCase()}
+                </h1>
+                <p className="text-xs font-neo-bold opacity-80">
+                  {isCreator ? '👑 Organizer' : '👤 Member'}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick action buttons in header */}
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/expenses?code=${room.invite_code}`}
+                className="neo-button-primary border-2 px-3 py-1.5 text-xs font-neo-black uppercase"
+              >
+                + Expense
+              </Link>
+            </div>
           </div>
 
           {/* Quick Info */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
-            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2 sm:p-3">
+            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2.5 sm:p-3">
               <p className="text-xs font-neo-bold text-neo-black opacity-70 uppercase">Members</p>
               <p className="text-lg sm:text-xl font-neo-black text-neo-black">{members.length}</p>
             </div>
-            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2 sm:p-3">
-              <p className="text-xs font-neo-bold text-neo-black opacity-70 uppercase">Total</p>
-              <p className="text-lg sm:text-xl font-neo-black text-neo-black">₹{room.total_spent.toLocaleString('en-IN')}</p>
+            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2.5 sm:p-3">
+              <p className="text-xs font-neo-bold text-neo-black opacity-70 uppercase">Total Spent</p>
+              <p className="text-lg sm:text-xl font-neo-black text-neo-black truncate">
+                ₹{room.total_spent.toLocaleString('en-IN')}
+              </p>
             </div>
-            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2 sm:p-3 col-span-2 sm:col-span-1">
-              <p className="text-xs font-neo-bold text-neo-black opacity-70 uppercase">Code</p>
-              <div className="flex items-center gap-2">
-                <p className="font-mono font-neo-black text-neo-black">{room.invite_code}</p>
+            <div className="bg-neo-white border-2 sm:border-3 border-neo-black rounded-neo p-2.5 sm:p-3 col-span-2 sm:col-span-1">
+              <p className="text-xs font-neo-bold text-neo-black opacity-70 uppercase">Invite Code</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-mono font-neo-black text-neo-black tracking-widest">{room.invite_code}</p>
                 <button
                   onClick={handleCopyCode}
-                  className="neo-icon-btn w-8 h-8 flex-shrink-0"
+                  className="neo-icon-btn w-7 h-7 flex-shrink-0"
                   title="Copy Code"
                   aria-label="Copy Code"
                 >
@@ -208,8 +310,8 @@ export default function RoomPage({ params }: RoomPageProps) {
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-neo-white border-b-2 sm:border-b-3 border-neo-black overflow-x-auto sticky top-20 sm:top-24 z-20">
-        <div className="max-w-6xl mx-auto flex gap-1 px-2 sm:px-4 md:px-6 lg:px-8 py-2 min-w-min">
+      <div className="bg-neo-white border-b-2 sm:border-b-3 border-neo-black overflow-x-auto scrollbar-none">
+        <div className="max-w-6xl mx-auto flex gap-1.5 px-3 sm:px-6 py-2.5 min-w-max">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -217,14 +319,14 @@ export default function RoomPage({ params }: RoomPageProps) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 border-2 sm:border-3 rounded-neo font-neo-bold text-xs sm:text-sm whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-neo border-2 sm:border-3 font-neo-black text-xs sm:text-sm whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-neo-cyan text-neo-black border-neo-black'
+                    ? 'bg-neo-cyan text-neo-black border-neo-black shadow-neo'
                     : 'bg-neo-gray text-neo-black border-neo-black hover:bg-neo-yellow'
                 }`}
               >
                 <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">{tab.label}</span>
+                <span>{tab.label}</span>
               </button>
             );
           })}
@@ -232,7 +334,15 @@ export default function RoomPage({ params }: RoomPageProps) {
       </div>
 
       {/* Tab Content */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+        {/* Error Notification */}
+        {actionError && (
+          <div className="bg-neo-magenta border-3 border-neo-black text-neo-white p-3 sm:p-4 rounded-neo text-xs sm:text-sm font-neo-bold mb-4 flex items-center justify-between">
+            <span>⚠️ {actionError}</span>
+            <button onClick={() => setActionError('')} className="font-black ml-2">✕</button>
+          </div>
+        )}
+
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-4 sm:space-y-6">
@@ -243,15 +353,16 @@ export default function RoomPage({ params }: RoomPageProps) {
               </div>
             )}
 
+            {/* Invitations Card */}
             <div className="neo-card-lg bg-neo-magenta border-3 sm:border-4 border-neo-black p-4 sm:p-6 text-neo-white">
               <p className="text-xs sm:text-neo-xs font-neo-bold uppercase opacity-90 mb-3">Trip Invitations</p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* 6-Digit Code */}
                 <div className="bg-neo-white border-2 sm:border-3 border-neo-black p-3 sm:p-4 rounded-neo text-neo-black">
                   <p className="text-xs font-neo-bold uppercase opacity-70 mb-1">Invite Code</p>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-2xl sm:text-3xl font-neo-black font-mono tracking-widest">{room.invite_code}</p>
+                    <p className="text-xl sm:text-2xl font-neo-black font-mono tracking-widest">{room.invite_code}</p>
                     <button
                       onClick={handleCopyCode}
                       className="neo-icon-btn w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0"
@@ -265,19 +376,19 @@ export default function RoomPage({ params }: RoomPageProps) {
                       )}
                     </button>
                   </div>
-                  <p className="text-xs font-neo-bold opacity-60 mt-2">Enter code manually on Join Trip page</p>
+                  <p className="text-xs font-neo-bold opacity-60 mt-1.5">Enter code manually on Join Trip page</p>
                 </div>
 
                 {/* Auto-Join Link */}
                 <div className="bg-neo-white border-2 sm:border-3 border-neo-black p-3 sm:p-4 rounded-neo text-neo-black">
                   <p className="text-xs font-neo-bold uppercase opacity-70 mb-1">Direct Auto-Join Link</p>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs sm:text-sm font-neo-bold truncate font-mono opacity-80 select-all">
+                    <p className="text-xs sm:text-sm font-neo-bold truncate font-mono opacity-80 select-all max-w-[170px] sm:max-w-none">
                       {getInviteUrl()}
                     </p>
                     <button
                       onClick={handleCopyLink}
-                      className="neo-button-primary border-2 px-3 py-2 text-xs font-neo-black uppercase flex items-center gap-1.5 flex-shrink-0"
+                      className="neo-button-primary border-2 px-3 py-1.5 text-xs font-neo-black uppercase flex items-center gap-1.5 flex-shrink-0"
                       title="Copy Auto-Join Link"
                     >
                       {copiedLink ? (
@@ -293,8 +404,83 @@ export default function RoomPage({ params }: RoomPageProps) {
                       )}
                     </button>
                   </div>
-                  <p className="text-xs font-neo-bold opacity-60 mt-2">Friends clicking this link will join automatically!</p>
+                  <p className="text-xs font-neo-bold opacity-60 mt-1.5">Friends clicking this link will join automatically!</p>
                 </div>
+              </div>
+            </div>
+
+            {/* Trip Danger / Management Zone */}
+            <div className="neo-card-lg bg-neo-white border-3 sm:border-4 border-neo-black p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-neo-black uppercase text-neo-black mb-2 flex items-center gap-2">
+                <ExclamationTriangleIcon className="w-5 h-5 text-neo-magenta" />
+                <span>Trip Actions</span>
+              </h3>
+              <p className="text-xs font-neo-bold text-neo-black opacity-70 mb-4">
+                Manage your membership or remove the trip
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Leave Trip Option (Always available to non-creators or creators who want to leave membership) */}
+                {!isCreator ? (
+                  !confirmLeave ? (
+                    <button
+                      onClick={() => setConfirmLeave(true)}
+                      className="neo-button-secondary border-2 sm:border-3 text-xs sm:text-sm px-4 py-3 font-neo-black uppercase flex items-center justify-center gap-2"
+                    >
+                      <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                      <span>Leave Trip</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-neo-bold text-neo-magenta">Leave this trip?</span>
+                      <button
+                        onClick={handleLeaveTrip}
+                        disabled={actionLoading}
+                        className="neo-button-danger border-2 px-3 py-2 text-xs font-neo-black uppercase"
+                      >
+                        {actionLoading ? 'Leaving...' : 'Yes, Leave'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmLeave(false)}
+                        className="neo-button-secondary border-2 px-3 py-2 text-xs font-neo-black uppercase"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  /* Delete Trip Option (Organizer only) */
+                  !confirmDelete ? (
+                    <button
+                      onClick={() => setConfirmDelete(true)}
+                      className="neo-button-danger border-2 sm:border-3 text-xs sm:text-sm px-4 py-3 font-neo-black uppercase flex items-center justify-center gap-2"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      <span>Delete Trip (Organizer Only)</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap bg-neo-yellow border-2 border-neo-black p-3 rounded-neo">
+                      <span className="text-xs font-neo-bold text-neo-black">
+                        Are you sure? All expenses, splits, and messages will be permanently deleted!
+                      </span>
+                      <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                        <button
+                          onClick={handleDeleteTrip}
+                          disabled={actionLoading}
+                          className="neo-button-danger border-2 px-3 py-2 text-xs font-neo-black uppercase flex-1 sm:flex-none"
+                        >
+                          {actionLoading ? 'Deleting...' : 'Yes, Delete Trip'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="neo-button-secondary border-2 px-3 py-2 text-xs font-neo-black uppercase flex-1 sm:flex-none"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             </div>
           </div>
@@ -310,7 +496,7 @@ export default function RoomPage({ params }: RoomPageProps) {
               Navigate to the Expenses page to log and view expenses for this trip
             </p>
             <Link
-              href="/expenses"
+              href={`/expenses?code=${room.invite_code}`}
               className="neo-button-primary inline-block border-2 sm:border-3 px-6 py-3 text-sm font-neo-black"
             >
               Go to Expenses
@@ -340,11 +526,13 @@ export default function RoomPage({ params }: RoomPageProps) {
         {/* Members Tab */}
         {activeTab === 'members' && (
           <div className="neo-card-lg bg-neo-yellow border-3 sm:border-4 border-neo-black p-4 sm:p-6">
-            <h3 className="text-sm sm:text-neo-md font-neo-black text-neo-black mb-4 uppercase">
-              Members ({members.length})
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm sm:text-neo-md font-neo-black text-neo-black uppercase">
+                Members ({members.length})
+              </h3>
+            </div>
 
-            <div className="space-y-2 sm:space-y-3">
+            <div className="space-y-2.5 sm:space-y-3">
               {members.map((member) => (
                 <div
                   key={member.id}
@@ -356,11 +544,25 @@ export default function RoomPage({ params }: RoomPageProps) {
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-neo-sm font-neo-bold text-neo-black break-words">
-                      {member.display_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs sm:text-neo-sm font-neo-bold text-neo-black break-words">
+                        {member.display_name}
+                      </p>
+                      {member.id === room.created_by && (
+                        <span className="bg-neo-lime text-neo-black border border-neo-black text-[10px] font-neo-black px-1.5 py-0.2 rounded">
+                          ORGANIZER
+                        </span>
+                      )}
+                      {member.id === currentUser?.id && (
+                        <span className="bg-neo-cyan text-neo-black border border-neo-black text-[10px] font-neo-black px-1.5 py-0.2 rounded">
+                          YOU
+                        </span>
+                      )}
+                    </div>
                     {member.upi_id && (
-                      <p className="text-xs font-neo-bold text-neo-black opacity-60">{member.upi_id}</p>
+                      <p className="text-xs font-mono font-neo-bold text-neo-black opacity-60 truncate">
+                        {member.upi_id}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -369,6 +571,7 @@ export default function RoomPage({ params }: RoomPageProps) {
           </div>
         )}
       </div>
+
       <BottomNav />
     </main>
   );

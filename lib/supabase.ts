@@ -35,6 +35,7 @@ export type Expense = {
   amount: number;
   category: string;
   expense_date: string;
+  split_all?: boolean;
   created_at: string;
   updated_at: string;
 };

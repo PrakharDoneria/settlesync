@@ -58,12 +58,15 @@ export const SettlementQR: React.FC<SettlementQRProps> = ({
   }, [balances]);
 
   const generateUPILink = (settlement: Settlement): string => {
-    const creditorUPI = settlement.to.upi_id || 'missing@upi';
-    const creditorName = settlement.to.display_name || 'SettleSync';
+    const rawUPI = settlement.to.upi_id?.trim() || '';
+    const creditorName = settlement.to.display_name?.trim() || 'SettleSync';
     const amount = settlement.amount.toFixed(2);
 
-    // UPI intent URI format
-    return `upi://pay?pa=${encodeURIComponent(creditorUPI)}&pn=${encodeURIComponent(creditorName)}&am=${amount}&cu=INR`;
+    // NPCI UPI specification requires raw VPA (e.g. user@bank without %40 percent-encoding)
+    // Most UPI apps (Google Pay, PhonePe, Paytm, BHIM) strictly reject %40 in the pa parameter
+    const creditorUPI = rawUPI || 'missing@upi';
+
+    return `upi://pay?pa=${creditorUPI}&pn=${encodeURIComponent(creditorName)}&am=${amount}&cu=INR`;
   };
 
   const handleCopyUPI = () => {

@@ -143,6 +143,7 @@ DROP POLICY IF EXISTS "Users can view rooms they created or joined" ON public.ro
 DROP POLICY IF EXISTS "Users can find room by invite code" ON public.rooms;
 DROP POLICY IF EXISTS "Users can insert rooms" ON public.rooms;
 DROP POLICY IF EXISTS "Users can update their rooms" ON public.rooms;
+DROP POLICY IF EXISTS "Users can delete their rooms" ON public.rooms;
 
 DROP POLICY IF EXISTS "Users can view members of their rooms" ON public.room_members;
 DROP POLICY IF EXISTS "Users can join rooms" ON public.room_members;
@@ -196,6 +197,10 @@ CREATE POLICY "Users can update their rooms" ON public.rooms
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid())
   WITH CHECK (created_by = auth.uid());
+
+CREATE POLICY "Users can delete their rooms" ON public.rooms
+  FOR DELETE TO authenticated
+  USING (created_by = auth.uid());
 
 -- ROOM_MEMBERS
 CREATE POLICY "Users can view members of their rooms" ON public.room_members

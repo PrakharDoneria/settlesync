@@ -27,24 +27,29 @@ export const BottomNav: React.FC = () => {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t-3 sm:border-t-4 border-neo-black bg-neo-white z-40 shadow-neo-xl overflow-x-auto">
-      <div className="flex justify-start sm:justify-around items-center gap-1 sm:gap-0 h-16 sm:h-20 px-2 sm:px-4 min-w-min sm:min-w-full">
+    <nav className="fixed bottom-0 left-0 right-0 border-t-3 sm:border-t-4 border-neo-black bg-neo-white z-40 shadow-neo-xl pb-safe">
+      <div className="flex justify-around items-center h-16 sm:h-20 px-1 sm:px-4 max-w-4xl mx-auto w-full">
         {navItems.map((item) => {
-          const isActive = pathname === item.href || (item.href === '/trips' && pathname.startsWith('/trips'));
+          const isActive =
+            pathname === item.href ||
+            (item.href === '/trips' && pathname.startsWith('/trips')) ||
+            (item.href === '/expenses' && pathname.startsWith('/expenses'));
           const Icon = item.icon;
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center w-12 sm:w-auto sm:flex-1 h-12 sm:h-16 px-2 sm:px-3 rounded-neo border-2 sm:border-3 transition-all duration-150 font-neo-black text-xs sm:text-sm flex-shrink-0 ${
+              className={`flex flex-col items-center justify-center flex-1 py-1.5 sm:py-2 mx-0.5 sm:mx-1 rounded-neo border-2 sm:border-3 transition-all duration-150 font-neo-black text-[10px] sm:text-xs text-center ${
                 isActive
-                  ? 'bg-neo-cyan text-neo-black border-neo-black shadow-neo-cyan'
+                  ? 'bg-neo-cyan text-neo-black border-neo-black shadow-neo'
                   : 'bg-neo-gray text-neo-black border-neo-black hover:bg-neo-yellow'
               }`}
             >
-              <Icon className="w-4 h-4 sm:w-6 sm:h-6" />
-              <span className="text-xs sm:text-neo-xs mt-0.5 sm:mt-1 hidden sm:inline whitespace-nowrap">{item.label}</span>
+              <Icon className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+              <span className="mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[50px] sm:max-w-none">
+                {item.label}
+              </span>
             </Link>
           );
         })}
